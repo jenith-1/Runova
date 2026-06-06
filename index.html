@@ -14,10 +14,114 @@ canvas{
   image-rendering:crisp-edges;
   -ms-interpolation-mode:nearest-neighbor;
 }
+/* Name entry overlay */
+#nameOverlay{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  background:rgba(6,6,15,0.88);backdrop-filter:blur(6px);
+  z-index:10;flex-direction:column;gap:0;
+  transition:opacity 0.25s ease;
+}
+#nameOverlay.hidden{opacity:0;pointer-events:none;}
+#nameBox{
+  background:rgba(20,16,48,0.98);
+  border:1.5px solid rgba(108,99,255,0.55);
+  border-radius:24px;
+  padding:36px 28px 28px;
+  display:flex;flex-direction:column;align-items:center;gap:16px;
+  width:min(340px,88vw);
+  box-shadow:0 8px 40px rgba(108,99,255,0.25);
+}
+#nameEmoji{font-size:52px;line-height:1;margin-bottom:4px;}
+#nameTitle{
+  font-family:'Nunito',sans-serif;font-weight:900;font-size:22px;
+  color:#fff;text-align:center;letter-spacing:0.3px;
+}
+#nameSub{
+  font-family:'Nunito',sans-serif;font-weight:600;font-size:13px;
+  color:rgba(255,255,255,0.5);text-align:center;margin-top:-8px;
+}
+#nameInput{
+  width:100%;padding:14px 18px;border-radius:14px;border:1.5px solid rgba(108,99,255,0.4);
+  background:rgba(255,255,255,0.07);color:#fff;
+  font-family:'Nunito',sans-serif;font-size:18px;font-weight:700;
+  outline:none;text-align:center;letter-spacing:0.5px;
+  transition:border-color 0.2s;
+  -webkit-appearance:none;
+}
+#nameInput::placeholder{color:rgba(255,255,255,0.25);}
+#nameInput:focus{border-color:rgba(108,99,255,0.8);}
+#nameConfirm{
+  width:100%;padding:15px;border-radius:14px;border:none;cursor:pointer;
+  background:linear-gradient(135deg,#6C63FF,#9B8FFF);
+  color:#fff;font-family:'Nunito',sans-serif;font-size:17px;font-weight:800;
+  letter-spacing:0.3px;box-shadow:0 4px 20px rgba(108,99,255,0.4);
+  transition:transform 0.1s,box-shadow 0.1s;
+  -webkit-appearance:none;
+}
+#nameConfirm:active{transform:scale(0.97);box-shadow:0 2px 12px rgba(108,99,255,0.3);}
+/* Streak reward popup */
+#streakPopup{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  background:rgba(6,6,15,0.85);backdrop-filter:blur(8px);
+  z-index:20;
+  transition:opacity 0.3s ease;
+}
+#streakPopup.hidden{opacity:0;pointer-events:none;}
+#streakBox{
+  background:rgba(16,10,44,0.98);
+  border:2px solid rgba(255,208,96,0.5);
+  border-radius:28px;
+  padding:36px 28px 28px;
+  display:flex;flex-direction:column;align-items:center;gap:14px;
+  width:min(330px,86vw);
+  box-shadow:0 8px 48px rgba(255,208,96,0.2),0 2px 16px rgba(0,0,0,0.5);
+}
+#streakIcon{font-size:60px;line-height:1;}
+#streakTitle{
+  font-family:'Nunito',sans-serif;font-weight:900;font-size:24px;
+  color:#FFD060;text-align:center;
+}
+#streakMsg{
+  font-family:'Nunito',sans-serif;font-weight:700;font-size:15px;
+  color:rgba(255,255,255,0.7);text-align:center;line-height:1.5;
+}
+#streakReward{
+  background:rgba(255,208,96,0.12);
+  border:1.5px solid rgba(255,208,96,0.4);
+  border-radius:16px;padding:12px 24px;
+  font-family:'Nunito',sans-serif;font-weight:900;font-size:20px;
+  color:#FFD060;text-align:center;width:100%;
+}
+#streakClaim{
+  width:100%;padding:15px;border-radius:16px;border:none;cursor:pointer;
+  background:linear-gradient(135deg,#F7971E,#FFD060);
+  color:#1a0a00;font-family:'Nunito',sans-serif;font-size:17px;font-weight:900;
+  box-shadow:0 4px 20px rgba(247,151,30,0.45);
+  -webkit-appearance:none;transition:transform 0.1s;
+}
+#streakClaim:active{transform:scale(0.97);}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+<div id="streakPopup" class="hidden">
+  <div id="streakBox">
+    <div id="streakIcon">🔥</div>
+    <div id="streakTitle">Streak Milestone!</div>
+    <div id="streakMsg" id="streakMsg"></div>
+    <div id="streakReward"></div>
+    <button id="streakClaim">Claim Reward</button>
+  </div>
+</div>
+<div id="nameOverlay" class="hidden">
+  <div id="nameBox">
+    <div id="nameEmoji">🏎️</div>
+    <div id="nameTitle">What's your name?</div>
+    <div id="nameSub">This will appear on your home screen</div>
+    <input id="nameInput" type="text" maxlength="16" placeholder="Enter name…" autocomplete="off" autocorrect="off" spellcheck="false">
+    <button id="nameConfirm">Let's Race!</button>
+  </div>
+</div>
 <script>
 const C=document.getElementById('c'),X=C.getContext('2d',{alpha:false});
 const GW=390,GH=844;
@@ -61,6 +165,7 @@ const P={
   grass0:'#0a1f0a',
 };
 
+let playerName=localStorage.getItem('rv_name')||'';
 let coins=parseInt(localStorage.getItem('rv_coins')||'50');
 let owned=JSON.parse(localStorage.getItem('rv_owned')||'[0]');
 let active=parseInt(localStorage.getItem('rv_car')||'0');
@@ -68,7 +173,12 @@ let lastDay=localStorage.getItem('rv_daily')||'';
 let dayIdx=parseInt(localStorage.getItem('rv_dailyday')||'0');
 let musicOn=localStorage.getItem('rv_music')!=='0';
 let sfxOn=localStorage.getItem('rv_sfx')!=='0';
+// ── Streak system
+let streakCount =parseInt(localStorage.getItem('rv_streak')||'0');
+let streakLastDay=localStorage.getItem('rv_slast')||'';
+let streakClaimed=JSON.parse(localStorage.getItem('rv_sclaimed')||'[]');
 function save(){
+  localStorage.setItem('rv_name',playerName);
   localStorage.setItem('rv_coins',coins);
   localStorage.setItem('rv_owned',JSON.stringify(owned));
   localStorage.setItem('rv_car',active);
@@ -76,10 +186,107 @@ function save(){
   localStorage.setItem('rv_dailyday',dayIdx);
   localStorage.setItem('rv_music',musicOn?'1':'0');
   localStorage.setItem('rv_sfx',sfxOn?'1':'0');
+  localStorage.setItem('rv_streak',streakCount);
+  localStorage.setItem('rv_slast',streakLastDay);
+  localStorage.setItem('rv_sclaimed',JSON.stringify(streakClaimed));
 }
 
 let screen='home';
 function goto(s){screen=s;clearBtns();}
+
+// ── Player name overlay ─────────────────────────────────────
+const nameOverlay=document.getElementById('nameOverlay');
+const nameInput=document.getElementById('nameInput');
+const nameConfirm=document.getElementById('nameConfirm');
+
+function showNamePrompt(onDone){
+  nameInput.value='';
+  nameOverlay.classList.remove('hidden');
+  // Small delay so keyboard opens after animation
+  setTimeout(()=>nameInput.focus(),120);
+  function confirm(){
+    const v=nameInput.value.trim();
+    playerName=v.length>0?v:'Player';
+    save();
+    nameOverlay.classList.add('hidden');
+    nameInput.blur();
+    if(onDone) onDone();
+  }
+  nameConfirm.onclick=confirm;
+  nameInput.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();confirm();}};
+}
+
+// First launch: show name prompt before home screen
+if(!playerName){
+  setTimeout(()=>showNamePrompt(null),200);
+}
+
+// ── Streak logic ────────────────────────────────────────────
+const STREAK_MILESTONES={
+  5: {coins:15, msg:'5 Day Streak!',    icon:'🔥', sub:'You came back 5 days in a row!'},
+  10:{coins:30, msg:'10 Day Streak!',   icon:'⚡', sub:'10 days of racing — impressive!'},
+  15:{coins:60, msg:'15 Day Streak!',   icon:'🏆', sub:'15 days! You are on fire!'},
+  20:{coins:100,msg:'20 Day Streak!',   icon:'💎', sub:'20 days straight — legendary!'},
+  30:{coins:0,  msg:'30 Day Streak!',   icon:'🚀', sub:'Unlock the rarest car — FREE!', carUnlock:true},
+};
+
+function updateStreak(){
+  const today=new Date().toDateString();
+  if(streakLastDay===today) return; // already counted today
+  const yesterday=new Date(Date.now()-86400000).toDateString();
+  if(streakLastDay===yesterday){
+    streakCount++; // consecutive day
+  } else if(streakLastDay!==''){
+    streakCount=1; // streak broken — reset
+  } else {
+    streakCount=1; // first ever visit
+  }
+  streakLastDay=today;
+  save();
+  // Check for unclaimed milestone
+  if(STREAK_MILESTONES[streakCount] && !streakClaimed.includes(streakCount)){
+    setTimeout(()=>showStreakPopup(streakCount),600);
+  }
+}
+
+const streakPopup=document.getElementById('streakPopup');
+const streakIcon=document.getElementById('streakIcon');
+const streakTitle=document.getElementById('streakTitle');
+const streakMsg=document.getElementById('streakMsg');
+const streakReward=document.getElementById('streakReward');
+const streakClaim=document.getElementById('streakClaim');
+
+function showStreakPopup(day){
+  const m=STREAK_MILESTONES[day];
+  if(!m) return;
+  streakIcon.textContent=m.icon;
+  streakTitle.textContent=m.msg;
+  streakMsg.textContent=m.sub;
+  if(m.carUnlock){
+    // Find most expensive car not yet owned
+    const expIdx=CAR_DEFS.reduce((best,car,i)=>car.price>CAR_DEFS[best].price?i:best,0);
+    streakReward.textContent='🚗 '+CAR_DEFS[expIdx].name+' — UNLOCKED FREE!';
+  } else {
+    streakReward.textContent='+'+m.coins+' 🪙 Coins';
+  }
+  streakPopup.classList.remove('hidden');
+  streakClaim.onclick=()=>{
+    // Give reward
+    if(m.carUnlock){
+      const expIdx=CAR_DEFS.reduce((best,car,i)=>car.price>CAR_DEFS[best].price?i:best,0);
+      if(!owned.includes(expIdx)) owned.push(expIdx);
+    } else {
+      coins+=m.coins;
+    }
+    streakClaimed.push(day);
+    save();
+    streakPopup.classList.add('hidden');
+    if(sfxOn){ sfxWin(); setTimeout(sfxCoin,300); }
+  };
+}
+
+// Run streak update on load
+updateStreak();
 
 let AC;
 function audio(){if(!AC)AC=new(window.AudioContext||window.webkitAudioContext)();if(AC.state==='suspended')AC.resume();return AC;}
@@ -351,6 +558,7 @@ const TRACK=2200,LANES_Y=[310,395,480];
 let cars,question,qIdx,totalQ,particles,cfx,flashT,flashGood;
 let answered,ansFlash,placesDone,aiTimers,raceOver,correctCount=0;
 let resultPlace=1,resultEarned=0;
+let gamePaused=false;
 const AI_RACE=[];
 
 function initRace(){
@@ -365,7 +573,7 @@ function initRace(){
   totalQ=difficulty==='easy'?6:difficulty==='medium'?8:10;
   qIdx=0;particles=[];cfx=[];flashT=0;flashGood=false;
   answered=false;ansFlash=-1;placesDone=0;raceOver=false;
-  correctCount=0;
+  correctCount=0;gamePaused=false;
   aiTimers=[rn(1600,2800),rn(2000,3200)];
   nextQ();startBGM();
 }
@@ -381,7 +589,12 @@ function doAnswer(i){
     cfx.push({x:pSX(),y:LANES_Y[0]-40,life:1,txt:'+1'});
   }else{sfxWrong();flashGood=false;flashT=350;cars[0].vx=Math.max(cars[0].vx-rn(8,16),0);}
   qIdx++;
-  if(qIdx<totalQ && !raceOver) setTimeout(()=>{ if(!raceOver) nextQ(); },550);
+  // Always load next question if race is still running — even past totalQ
+  // This prevents the freeze where the last question disappears but the
+  // car hasn't crossed the finish line yet.
+  if(!raceOver){
+    setTimeout(()=>{ if(!raceOver && screen==='race') nextQ(); },550);
+  }
 }
 function spawnP(x,y){
   const c=[P.gold,P.accentC,P.accent,'#00C9FF',P.accentB,P.accentD];
@@ -394,7 +607,7 @@ function pSX(){return toSX(cars[0].x);}
 function getPlace(c){return[...cars].sort((a,b)=>b.x-a.x).indexOf(c)+1;}
 
 function updateRace(dt){
-  if(raceOver)return;
+  if(raceOver||gamePaused)return;
   for(const c of cars){
     if(c.fin)continue;
     c.vx*=0.93;c.x+=c.vx*dt*0.055;if(c.x<0)c.x=0;
@@ -691,16 +904,22 @@ let btns=[];
 function clearBtns(){btns=[];}
 function addBtn(id,x,y,w,h,fn){btns.push({id,x,y,w,h,fn});}
 function backBtn(fn){
-  // Large touch-friendly back button
-  X.save();X.shadowColor='rgba(108,99,255,0.3)';X.shadowBlur=12;
-  rr(16,GH-76,88,52,20,P.panel,P.panelBorder,1.5);X.restore();
-  txt('←',34,GH-50,18,P.accent,'center',900);
-  txt('Back',66,GH-50,15,P.textSecondary,'center',700);
-  addBtn('back',16,GH-76,88,52,fn);
+  // Always drawn and registered last — on top of everything
+  X.save();
+  X.shadowColor='rgba(108,99,255,0.45)';X.shadowBlur=14;
+  rr(14,GH-74,96,56,22,P.panel,P.panelBorder,2);
+  X.restore();
+  txt('←',36,GH-46,20,P.accent,'center',900);
+  txt('Back',72,GH-46,15,P.textSecondary,'center',700);
+  // Register with highest priority — always last so it wins in hit testing
+  addBtn('back_top',14,GH-74,96,56,fn);
 }
 function handleTap(gx,gy){
-  // gx,gy are already in game coordinates
-  for(const b of btns){if(gx>=b.x&&gx<=b.x+b.w&&gy>=b.y&&gy<=b.y+b.h){sfxClick();b.fn();return;}}
+  // Iterate in reverse: last-registered buttons (back button, pause) win
+  for(let i=btns.length-1;i>=0;i--){
+    const b=btns[i];
+    if(gx>=b.x&&gx<=b.x+b.w&&gy>=b.y&&gy<=b.y+b.h){sfxClick();b.fn();return;}
+  }
 }
 // ── Unified pointer handler ──────────────────────────────────
 let _tapX=0,_tapY=0,_isDragging=false;
@@ -772,14 +991,27 @@ function drawHome(){
   lg.addColorStop(0,'#FF6584');lg.addColorStop(.4,'#FFD060');lg.addColorStop(.7,'#43E97B');lg.addColorStop(1,'#6C63FF');
   X.fillStyle='rgba(0,0,0,0.4)';X.fillText('RUNOVA',3,5);
   X.fillStyle=lg;X.fillText('RUNOVA',0,0);X.restore();X.restore();
-  txt('Math. Speed. Victory!',GW/2,228,17,P.textSecondary,'center',700);
+  txt('Math. Speed. Victory!',GW/2,224,17,P.textSecondary,'center',700);
+  // Player greeting + streak badge
+  const dispName=playerName||'Player';
+  txt(`Hi, ${dispName}! 👋`,GW/2,244,14,P.textMuted,'center',700);
+  // Streak pill — top-right corner
+  if(streakCount>0){
+    const spx=GW-18,spy=18,spw=64,sph=28;
+    X.save();
+    const scol=streakCount>=20?'#FF6584':streakCount>=10?'#FFD060':streakCount>=5?'#F7971E':'rgba(255,255,255,0.12)';
+    if(streakCount>=5){X.shadowColor=scol+'88';X.shadowBlur=10;}
+    rr(spx-spw,spy,spw,sph,sph/2,streakCount>=5?scol+'22':'rgba(255,255,255,0.07)',scol,streakCount>=5?1.5:1);
+    X.restore();
+    txt(`🔥 ${streakCount}`,spx-spw/2,spy+sph/2,12,streakCount>=5?scol:P.textMuted,'center',800);
+  }
   X.save();X.shadowColor='rgba(255,208,96,0.3)';X.shadowBlur=16;
-  rr(GW/2-72,248,144,36,18,'rgba(255,208,96,0.1)','rgba(255,208,96,0.3)',1.5);X.restore();
-  txt(`🪙  ${coins} coins`,GW/2,266,16,P.gold,'center',800);
+  rr(GW/2-72,260,144,36,18,'rgba(255,208,96,0.1)','rgba(255,208,96,0.3)',1.5);X.restore();
+  txt(`🪙  ${coins} coins`,GW/2,278,16,P.gold,'center',800);
   const today=new Date().toDateString();
   if(lastDay!==today){
-    X.beginPath();X.arc(GW/2+72+14,260,6,0,Math.PI*2);X.fillStyle='#FF6584';X.fill();
-    txt('!',GW/2+72+14,260,9,'#fff','center',900);
+    X.beginPath();X.arc(GW/2+72+14,272,6,0,Math.PI*2);X.fillStyle='#FF6584';X.fill();
+    txt('!',GW/2+72+14,272,9,'#fff','center',900);
   }
   X.save();X.shadowColor='rgba(108,99,255,0.55)';X.shadowBlur=30;
   const lg2=X.createLinearGradient(40,558,GW-40,628);lg2.addColorStop(0,'#6C63FF');lg2.addColorStop(1,'#9B8FFF');
@@ -846,13 +1078,20 @@ function drawRace(){
   const pCol=place===1?P.gold:place===2?'#BDC3C7':'#CD7F32';
   pill(16,16,60,26,pCol);txt(placeStr,46,29,13,'#1a1a2e','center',900);
   txt(`🪙 ${coins}`,GW-18,29,16,P.gold,'right',800);
+  // Pause button — top centre
+  X.save();X.shadowColor='rgba(0,0,0,0.4)';X.shadowBlur=8;
+  rr(GW/2-20,12,40,30,10,'rgba(0,0,0,0.55)','rgba(255,255,255,0.18)',1.5);
+  X.restore();
+  txt('⏸',GW/2,27,16,'rgba(255,255,255,0.85)','center',900);
+  addBtn('pause',GW/2-20,12,40,30,()=>{gamePaused=true;});
   if(question&&!answered){
     X.save();X.shadowColor='rgba(108,99,255,0.25)';X.shadowBlur=20;
     rr(16,42,GW-32,74,20,P.panel,P.panelBorder);X.restore();
     txt(question.text,GW/2,79,30,P.white,'center',900);
     for(let i=0;i<totalQ;i++){
+      const dotQ=Math.min(qIdx,totalQ);
       X.beginPath();X.arc(GW/2-((totalQ-1)*9)+i*18,42-14,4.5,0,Math.PI*2);
-      X.fillStyle=i<qIdx?P.accentC:(i===qIdx?P.gold:'rgba(255,255,255,0.18)');X.fill();
+      X.fillStyle=i<dotQ?P.accentC:(i===dotQ?P.gold:'rgba(255,255,255,0.18)');X.fill();
     }
     const ay=GH-185,ah=72,ag=10,aw=(GW-32-ag*2)/3;
     const aC=['#5C35D4','#1D8A7A','#C0392B'];
@@ -869,6 +1108,37 @@ function drawRace(){
   for(const p of particles){X.globalAlpha=p.life;X.beginPath();X.arc(p.x,p.y,p.r*p.life,0,Math.PI*2);X.fillStyle=p.color;X.fill();}X.globalAlpha=1;
   X.font='700 20px Nunito,sans-serif';X.textAlign='center';X.textBaseline='middle';
   for(const c of cfx){X.globalAlpha=c.life;X.fillStyle=P.gold;X.fillText(c.txt,c.x,c.y);}X.globalAlpha=1;
+
+  // ── Pause overlay
+  if(gamePaused){
+    // Dim backdrop
+    X.fillStyle='rgba(0,0,0,0.72)';X.fillRect(0,0,GW,GH);
+    // Panel
+    X.save();X.shadowColor='rgba(108,99,255,0.4)';X.shadowBlur=30;
+    rr(GW/2-110,GH/2-110,220,220,28,'rgba(14,10,36,0.97)','rgba(108,99,255,0.5)',2);
+    X.restore();
+    // Title
+    X.font='900 26px Nunito,sans-serif';X.fillStyle='#fff';
+    X.textAlign='center';X.textBaseline='middle';
+    X.fillStyle='rgba(0,0,0,0.4)';X.fillText('PAUSED',GW/2+2,GH/2-72);
+    X.fillStyle='#fff';X.fillText('PAUSED',GW/2,GH/2-72);
+    // Resume button
+    X.save();X.shadowColor='rgba(67,233,123,0.5)';X.shadowBlur=16;
+    rr(GW/2-90,GH/2-36,180,52,18,'#1D8A7A');X.restore();
+    X.save();X.beginPath();X.moveTo(GW/2-90+18,GH/2-36);
+    X.arcTo(GW/2+90,GH/2-36,GW/2+90,GH/2+16,18);X.lineTo(GW/2+90,GH/2-36+26);
+    X.lineTo(GW/2-90,GH/2-36+26);X.arcTo(GW/2-90,GH/2-36,GW/2+90,GH/2-36,18);X.closePath();
+    X.fillStyle='rgba(255,255,255,0.12)';X.fill();X.restore();
+    txt('▶  Resume',GW/2,GH/2-10,17,'#fff','center',800);
+    addBtn('resume',GW/2-90,GH/2-36,180,52,()=>{gamePaused=false;});
+    // Exit Race button
+    X.save();X.shadowColor='rgba(255,71,87,0.4)';X.shadowBlur=12;
+    rr(GW/2-90,GH/2+30,180,48,18,'rgba(255,71,87,0.18)','rgba(255,71,87,0.45)',1.5);X.restore();
+    txt('✕  Exit Race',GW/2,GH/2+54,16,'rgba(255,100,120,0.9)','center',800);
+    addBtn('exitrace',GW/2-90,GH/2+30,180,48,()=>{
+      gamePaused=false;raceOver=true;stopBGM();goto('home');
+    });
+  }
 }
 
 /* ══ RESULT ══ */
@@ -1059,14 +1329,19 @@ function drawGarage(){
       txt('Select',cx+cw/2,cy+160,11,P.textSecondary,'center',700);
     }
 
-    // *** CRITICAL: hit coords = screen coords = drawn pos - scroll offset ***
+    // Hit coords = screen coords = drawn canvas pos minus scroll
     const screenCY = cy - garageScroll;
-    // Only register if visible on screen
-    if(screenCY+ch > scrollTop && screenCY < GH-80){
-      addBtn(`car${i}`,cx,screenCY,cw,ch,()=>{
-        if(isOwned){active=i;save();}
-        else if(coins>=car.price){coins-=car.price;owned.push(i);active=i;save();sfxCoin();}
-      });
+    // Reserve bottom 90px for back button — never let car cards block it
+    const BACK_ZONE = GH - 90;
+    if(screenCY + ch > scrollTop && screenCY < BACK_ZONE){
+      // Clamp hit area so it never bleeds into back button zone
+      const clampedH = Math.min(ch, BACK_ZONE - screenCY);
+      if(clampedH > 20){
+        addBtn(`car${i}`,cx,screenCY,cw,clampedH,()=>{
+          if(isOwned){active=i;save();}
+          else if(coins>=car.price){coins-=car.price;owned.push(i);active=i;save();sfxCoin();}
+        });
+      }
     }
   });
   X.restore();
@@ -1173,12 +1448,28 @@ function drawSettings(){
     addBtn(`tog${i}`,tx,ty,60,34,row.fn);
     addBtn(`row${i}`,28,ry,GW-56,78,row.fn);
   });
-  rr(28,428,GW-56,80,20,P.panel,P.panelBorder);
-  txt('Runova MVP v2.1',GW/2,460,15,P.textSecondary,'center',700);
-  txt('Math Racing for Everyone',GW/2,484,13,P.textMuted,'center',600);
+  // Change Name row
+  rr(28,418,GW-56,64,20,P.panel,P.panelBorder);
+  txt('👤  Player Name',62,418+22,17,P.white,'left',700);
+  const dName=playerName||'Player';
+  txt(dName,62,418+45,13,P.textMuted,'left',600);
+  // edit badge
+  X.save();X.shadowColor='rgba(108,99,255,0.3)';X.shadowBlur=8;
+  rr(GW-100,418+16,66,32,16,P.accent);X.restore();
+  txt('Change',GW-67,418+32,12,'#fff','center',800);
+  addBtn('chname',GW-100,418+16,66,32,()=>{
+    showNamePrompt(()=>{}); // re-opens prompt; onDone is no-op (stays on settings)
+  });
+  addBtn('chnamerow',28,418,GW-56,64,()=>{
+    showNamePrompt(()=>{});
+  });
+
+  rr(28,496,GW-56,80,20,P.panel,P.panelBorder);
+  txt('Runova MVP v2.1',GW/2,528,15,P.textSecondary,'center',700);
+  txt('Math Racing for Everyone',GW/2,552,13,P.textMuted,'center',600);
   X.save();X.shadowColor='rgba(255,208,96,0.22)';X.shadowBlur=14;
-  rr(28,526,GW-56,60,20,'rgba(255,208,96,0.07)','rgba(255,208,96,0.22)',1.5);X.restore();
-  txt(`🪙 Total Coins: ${coins}`,GW/2,556,16,P.gold,'center',800);
+  rr(28,592,GW-56,56,20,'rgba(255,208,96,0.07)','rgba(255,208,96,0.22)',1.5);X.restore();
+  txt(`🪙 Total Coins: ${coins}`,GW/2,620,16,P.gold,'center',800);
   backBtn(()=>goto('home'));
 }
 
@@ -1208,8 +1499,5 @@ function loop(ts){
 }
 requestAnimationFrame(ts=>{last=ts;requestAnimationFrame(loop);});
 </script>
-
-<script defer src="/_vercel/insights/script.js"></script>
-
 </body>
 </html>
