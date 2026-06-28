@@ -165,34 +165,116 @@ const P={
   grass0:'#0a1f0a',
 };
 
-let playerName=localStorage.getItem('rv_name')||'';
-let coins=parseInt(localStorage.getItem('rv_coins')||'50');
-let owned=JSON.parse(localStorage.getItem('rv_owned')||'[0]');
-let active=parseInt(localStorage.getItem('rv_car')||'0');
-let lastDay=localStorage.getItem('rv_daily')||'';
-let dayIdx=parseInt(localStorage.getItem('rv_dailyday')||'0');
-let musicOn=localStorage.getItem('rv_music')!=='0';
-let sfxOn=localStorage.getItem('rv_sfx')!=='0';
-// ── Streak system
-let streakCount =parseInt(localStorage.getItem('rv_streak')||'0');
-let streakLastDay=localStorage.getItem('rv_slast')||'';
-let streakClaimed=JSON.parse(localStorage.getItem('rv_sclaimed')||'[]');
+/* ═══════════════════════════════════════════════════════════
+   RUNOVA — Complete Local Storage System
+   All progress saved automatically. Never lost on refresh.
+   ═══════════════════════════════════════════════════════════ */
+
+// Default values — used on very first launch
+const DEFAULTS = {
+  name:       '',
+  coins:      50,
+  owned:      [0],
+  car:        0,
+  music:      true,
+  sfx:        true,
+  diff:       'medium',
+  daily:      '',
+  dailyday:   0,
+  streak:     0,
+  slast:      '',
+  sclaimed:   [],
+  races:      0,
+  wins:       0,
+  bestscore:  0,
+};
+
+// Safe localStorage helpers — never crash if storage is blocked
+function lsGet(key, fallback){
+  try{
+    const v = localStorage.getItem('rv_'+key);
+    if(v === null) return fallback;
+    return v;
+  }catch(e){ return fallback; }
+}
+function lsSet(key, val){
+  try{ localStorage.setItem('rv_'+key, val); }catch(e){}
+}
+function lsGetJSON(key, fallback){
+  try{
+    const v = localStorage.getItem('rv_'+key);
+    if(v === null) return fallback;
+    return JSON.parse(v);
+  }catch(e){ return fallback; }
+}
+
+// ── Load all state from localStorage (with safe defaults) ──
+let playerName   = lsGet('name',    DEFAULTS.name);
+let coins        = parseInt(lsGet('coins', DEFAULTS.coins)) || DEFAULTS.coins;
+let owned        = lsGetJSON('owned',    DEFAULTS.owned);
+let active       = parseInt(lsGet('car', DEFAULTS.car))   || DEFAULTS.car;
+let musicOn      = lsGet('music',  DEFAULTS.music?'1':'0') !== '0';
+let sfxOn        = lsGet('sfx',    DEFAULTS.sfx?'1':'0')   !== '0';
+let difficulty   = lsGet('diff',   DEFAULTS.diff);
+let lastDay      = lsGet('daily',  DEFAULTS.daily);
+let dayIdx       = parseInt(lsGet('dailyday', DEFAULTS.dailyday)) || 0;
+let streakCount  = parseInt(lsGet('streak',   DEFAULTS.streak))   || 0;
+let streakLastDay= lsGet('slast',  DEFAULTS.slast);
+let streakClaimed= lsGetJSON('sclaimed', DEFAULTS.sclaimed);
+let totalRaces   = parseInt(lsGet('races',     DEFAULTS.races))     || 0;
+let totalWins    = parseInt(lsGet('wins',      DEFAULTS.wins))      || 0;
+let bestScore    = parseInt(lsGet('bestscore', DEFAULTS.bestscore)) || 0;
+
+// Validate owned array — ensure it's valid and contains 0
+if(!Array.isArray(owned) || owned.length===0) owned=[0];
+// Validate active car index
+if(active<0 || active>=6 || !owned.includes(active)) active=owned[0]||0;
+// Validate difficulty
+if(!['easy','medium','hard'].includes(difficulty)) difficulty='medium';
+// Validate coins
+if(isNaN(coins)||coins<0) coins=DEFAULTS.coins;
+
+// ── Save ALL state to localStorage ──
 function save(){
-  localStorage.setItem('rv_name',playerName);
-  localStorage.setItem('rv_coins',coins);
-  localStorage.setItem('rv_owned',JSON.stringify(owned));
-  localStorage.setItem('rv_car',active);
-  localStorage.setItem('rv_daily',lastDay);
-  localStorage.setItem('rv_dailyday',dayIdx);
-  localStorage.setItem('rv_music',musicOn?'1':'0');
-  localStorage.setItem('rv_sfx',sfxOn?'1':'0');
-  localStorage.setItem('rv_streak',streakCount);
-  localStorage.setItem('rv_slast',streakLastDay);
-  localStorage.setItem('rv_sclaimed',JSON.stringify(streakClaimed));
+  lsSet('name',      playerName);
+  lsSet('coins',     coins);
+  lsSet('owned',     JSON.stringify(owned));
+  lsSet('car',       active);
+  lsSet('music',     musicOn?'1':'0');
+  lsSet('sfx',       sfxOn?'1':'0');
+  lsSet('diff',      difficulty);
+  lsSet('daily',     lastDay);
+  lsSet('dailyday',  dayIdx);
+  lsSet('streak',    streakCount);
+  lsSet('slast',     streakLastDay);
+  lsSet('sclaimed',  JSON.stringify(streakClaimed));
+  lsSet('races',     totalRaces);
+  lsSet('wins',      totalWins);
+  lsSet('bestscore', bestScore);
 }
 
 let screen='home';
-function goto(s){screen=s;clearBtns();}
+let fadeAlpha=0, fadeDir=0, fadeTarget='', fadeSpeed=0.06;
+
+function goto(s){
+  // Instant for race→result (dramatic pause handles it)
+  if(screen==='race'||s==='race'){screen=s;clearBtns();fadeAlpha=0;return;}
+  fadeTarget=s; fadeDir=1; // fade out then switch
+}
+function updateFade(){
+  if(fadeDir===1){
+    fadeAlpha=Math.min(1,fadeAlpha+fadeSpeed);
+    if(fadeAlpha>=1){screen=fadeTarget;clearBtns();fadeDir=-1;}
+  } else if(fadeDir===-1){
+    fadeAlpha=Math.max(0,fadeAlpha-fadeSpeed);
+    if(fadeAlpha<=0) fadeDir=0;
+  }
+}
+function drawFade(){
+  if(fadeAlpha<=0)return;
+  X.fillStyle=`rgba(6,6,15,${fadeAlpha})`;
+  X.fillRect(0,0,GW,GH);
+}
 
 // ── Player name overlay ─────────────────────────────────────
 const nameOverlay=document.getElementById('nameOverlay');
@@ -536,58 +618,102 @@ const CAR_DEFS=[
 ];
 const AI_NAMES=['Emma','Noah','Olivia','Liam','Ava'];
 
-let difficulty='medium';
+// difficulty loaded from localStorage above
 function makeQ(d){
-  const ops=d==='easy'?['+','-']:d==='medium'?['+','-','*']:['+','-','*','/'];
-  const op=ops[~~(Math.random()*ops.length)];
-  let a,b,ans;
-  if(op==='+'){a=rn(1,d==='easy'?15:d==='medium'?50:99);b=rn(1,d==='easy'?15:d==='medium'?50:99);ans=a+b;}
-  else if(op==='-'){a=rn(d==='easy'?5:10,d==='easy'?20:99);b=rn(1,a);ans=a-b;}
-  else if(op==='*'){a=rn(2,d==='easy'?5:d==='medium'?9:12);b=rn(2,d==='easy'?5:d==='medium'?9:12);ans=a*b;}
-  else{b=rn(2,12);ans=rn(1,12);a=b*ans;}
+  let a,b,ans,op;
+
+  if(d==='easy'){
+    // Young children only: tiny numbers, + and - only
+    // Addition: both 1-6, result max 10
+    // Subtraction: small result, never negative
+    op=Math.random()<0.6?'+':'-';
+    if(op==='+'){
+      a=rn(1,6); b=rn(1,6);
+      ans=a+b;
+    } else {
+      // Ensure result is 1-5 (never 0, never confusing)
+      ans=rn(1,5); b=rn(1,4); a=ans+b;
+    }
+    // Wrong answers differ by ±1 or ±2 only — tricky but readable
+    let w1=ans+(Math.random()<.5?1:-1);
+    let w2=ans+(Math.random()<.5?2:-2);
+    if(w1<=0)w1=ans+1;
+    if(w2<=0)w2=ans+2;
+    if(w1===ans)w1=ans+1;
+    if(w2===ans||w2===w1){w2=ans-1;if(w2<=0)w2=ans+3;}
+    return{text:`${a} ${op} ${b} =`,ans,choices:shuf([ans,w1,w2])};
+  }
+
+  if(d==='medium'){
+    const ops=['+','-','*'];
+    op=ops[~~(Math.random()*ops.length)];
+    if(op==='+'){a=rn(5,50);b=rn(5,50);ans=a+b;}
+    else if(op==='-'){a=rn(10,99);b=rn(1,a);ans=a-b;}
+    else{a=rn(2,9);b=rn(2,9);ans=a*b;}
+  } else {
+    // Hard: all ops, bigger numbers
+    const ops=['+','-','*','/'];
+    op=ops[~~(Math.random()*ops.length)];
+    if(op==='+'){a=rn(10,99);b=rn(10,99);ans=a+b;}
+    else if(op==='-'){a=rn(20,99);b=rn(1,a);ans=a-b;}
+    else if(op==='*'){a=rn(3,12);b=rn(3,12);ans=a*b;}
+    else{b=rn(2,12);ans=rn(2,12);a=b*ans;}
+  }
+
   let w1=Math.max(1,ans+rn(1,6)*(Math.random()<.5?1:-1));
-  let w2=Math.max(1,ans+rn(7,13)*(Math.random()<.5?1:-1));
-  if(w1===ans)w1=ans+rn(1,5);
-  if(w2===ans||w2===w1)w2=ans+rn(10,15);
+  let w2=Math.max(1,ans+rn(7,15)*(Math.random()<.5?1:-1));
+  if(w1===ans)w1=ans+rn(1,4);
+  if(w2===ans||w2===w1)w2=ans+rn(8,14);
   return{text:`${a} ${op} ${b} =`,ans,choices:shuf([ans,w1,w2])};
 }
 function rn(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
 function shuf(a){return a.sort(()=>Math.random()-.5);}
 
-const TRACK=2200,LANES_Y=[310,395,480];
+const TRACK=3500,LANES_Y=[310,395,480];
 let cars,question,qIdx,totalQ,particles,cfx,flashT,flashGood;
 let answered,ansFlash,placesDone,aiTimers,raceOver,correctCount=0;
 let resultPlace=1,resultEarned=0;
 let gamePaused=false;
+let camX=0; // smoothed camera position
 const AI_RACE=[];
 
 function initRace(){
   const ai1=(active+1)%6,ai2=(active+2)%6;
   AI_RACE[0]=AI_NAMES[rn(0,3)];AI_RACE[1]=AI_NAMES[rn(0,3)];
   if(AI_RACE[0]===AI_RACE[1])AI_RACE[1]=AI_NAMES[4];
+  camX=50;
   cars=[
-    {x:50,vx:0,lane:0,def:CAR_DEFS[active],player:true, fin:false,place:0,name:'You',  wheel:0},
-    {x:30,vx:0,lane:1,def:CAR_DEFS[ai1],   player:false,fin:false,place:0,name:AI_RACE[0],wheel:0},
-    {x:20,vx:0,lane:2,def:CAR_DEFS[ai2],   player:false,fin:false,place:0,name:AI_RACE[1],wheel:0},
+    {x:50,vx:0,lane:0,def:CAR_DEFS[active],player:true, fin:false,place:0,name:'You',  wheel:0,sx:1,sy:1,bounce:0,prevVx:0},
+    {x:30,vx:0,lane:1,def:CAR_DEFS[ai1],   player:false,fin:false,place:0,name:AI_RACE[0],wheel:0,sx:1,sy:1,bounce:0,prevVx:0},
+    {x:20,vx:0,lane:2,def:CAR_DEFS[ai2],   player:false,fin:false,place:0,name:AI_RACE[1],wheel:0,sx:1,sy:1,bounce:0,prevVx:0},
   ];
-  totalQ=difficulty==='easy'?6:difficulty==='medium'?8:10;
+  totalQ=15;
   qIdx=0;particles=[];cfx=[];flashT=0;flashGood=false;
   answered=false;ansFlash=-1;placesDone=0;raceOver=false;
   correctCount=0;gamePaused=false;
   aiTimers=[rn(1600,2800),rn(2000,3200)];
   nextQ();startBGM();
 }
-function nextQ(){question=makeQ(difficulty);answered=false;ansFlash=-1;}
+let qAppearT=0;
+function nextQ(){question=makeQ(difficulty);answered=false;ansFlash=-1;qAppearT=Date.now();}
 function doAnswer(i){
   if(answered || raceOver || screen!=='race')return;
   answered=true;ansFlash=i;
   const ok=question.choices[i]===question.ans;
   if(ok){
-    sfxCorrect();flashGood=true;flashT=350;correctCount++;
-    cars[0].vx=Math.min(cars[0].vx+rn(22,38),72);
+    sfxCorrect();flashGood=true;flashT=420;correctCount++;
+    const boost=rn(38,48);
+    cars[0].vx=Math.min(cars[0].vx+boost,52);
+    cars[0].sx=0.75;cars[0].sy=1.25; // hard squish on boost
     spawnP(pSX(),LANES_Y[0]);
     cfx.push({x:pSX(),y:LANES_Y[0]-40,life:1,txt:'+1'});
-  }else{sfxWrong();flashGood=false;flashT=350;cars[0].vx=Math.max(cars[0].vx-rn(8,16),0);}
+    // Speed line burst
+    for(let sl=0;sl<8;sl++) particles.push({
+      x:pSX()-rn(10,60),y:LANES_Y[0]-rn(-20,20),
+      vx:-rn(8,18),vy:(Math.random()-.5)*2,
+      r:1.5,life:0.7,color:'rgba(255,255,255,0.5)',isLine:true,len:rn(20,50)
+    });
+  }else{sfxWrong();flashGood=false;flashT=380;cars[0].vx=Math.max(cars[0].vx-rn(3,6),0);}
   qIdx++;
   // Always load next question if race is still running — even past totalQ
   // This prevents the freeze where the last question disappears but the
@@ -601,33 +727,52 @@ function spawnP(x,y){
   for(let i=0;i<20;i++){const a=(Math.PI*2/20)*i+Math.random()*.5,s=rn(3,10);
     particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-2,r:rn(3,6),life:1,color:c[i%c.length]});}
 }
-function camOff(){return Math.max(0,Math.min(cars[0].x-GW*0.32,TRACK-GW));}
-function toSX(wx){return 30+(wx-camOff())*(GW*0.97/(TRACK*0.82));}
+function camOff(){return camX;}
+function toSX(wx){return 30+(wx-camX)*(GW*0.97/(TRACK*0.82));}
 function pSX(){return toSX(cars[0].x);}
 function getPlace(c){return[...cars].sort((a,b)=>b.x-a.x).indexOf(c)+1;}
 
 function updateRace(dt){
   if(raceOver||gamePaused)return;
+  // Smooth camera: lerp toward target
+  const camTarget=Math.max(0,Math.min(cars[0].x-GW*0.32,TRACK-GW));
+  camX+=(camTarget-camX)*Math.min(1,dt*0.008);
+
   for(const c of cars){
     if(c.fin)continue;
-    c.vx*=0.93;c.x+=c.vx*dt*0.055;if(c.x<0)c.x=0;
+    const accel=c.vx-c.prevVx;
+    c.prevVx=c.vx;
+    c.vx*=0.93;c.x+=c.vx*dt*0.020;if(c.x<0)c.x=0;
     if(c.vx>1)c.wheel+=dt*0.005*c.vx;
+    // Squish on boost, stretch at speed
+    if(accel>5){c.sx=0.82;c.sy=1.18;} // squish on sudden accel
+    else if(c.vx>25){c.sx=1.08+Math.min(c.vx,50)*0.004;c.sy=0.94;} // stretch at speed
+    else{c.sx+=(1-c.sx)*0.18;c.sy+=(1-c.sy)*0.18;} // spring back
+    // Vertical bounce from road
+    c.bounce=Math.sin(Date.now()*0.012+c.lane*2.1)*Math.min(c.vx*0.06,2.5);
     if(!c.fin && c.x>=TRACK-60){
-      c.fin=true;
-      if(c.player && !raceOver){
-        // ── Player crossed finish: end race immediately ──
-        raceOver=true;  // set FIRST to block any further updates
-        // Determine place by how many AI are ahead right now
-        let place=1;
-        for(const other of cars){if(!other.player && other.x>=c.x) place++;}
-        c.place=place;
-        const earnedCoins=place===1?5:place===2?2:0;
-        coins+=earnedCoins; save();
-        if(earnedCoins>0) sfxCoin();
-        sfxWin();
-        resultPlace=place; resultEarned=earnedCoins;
-        // Short pause so player sees the finish, then go to result
-        setTimeout(()=>{ if(screen==='race') goto('result'); },850);
+      if(c.player){
+        // Player must answer minimum questions before finishing
+          c.fin=true;
+          if(!raceOver){
+            raceOver=true;
+            let place=1;
+            for(const other of cars){if(!other.player && other.x>=c.x) place++;}
+            c.place=place;
+            const earnedCoins=place===1?5:place===2?2:0;
+            coins+=earnedCoins;
+            // ── Update lifetime stats
+            totalRaces++;
+            if(place===1) totalWins++;
+            if(correctCount>bestScore) bestScore=correctCount;
+            save();
+            if(earnedCoins>0) sfxCoin();
+            sfxWin();
+            resultPlace=place; resultEarned=earnedCoins;
+            setTimeout(()=>{ if(screen==='race') goto('result'); },850);
+          }
+      } else {
+        c.fin=true;
       }
     }
   }
@@ -636,7 +781,7 @@ function updateRace(dt){
     aiTimers[i]-=dt;
     if(aiTimers[i]<=0){
       const ok=Math.random()<(difficulty==='easy'?.58:difficulty==='medium'?.65:.72);
-      ai.vx=ok?Math.min(ai.vx+rn(18,32),68):Math.max(ai.vx-rn(4,10),0);
+      ai.vx=ok?Math.min(ai.vx+rn(34,44),50):Math.max(ai.vx-rn(2,5),0);
       aiTimers[i]=rn(ok?1400:700,ok?2800:1600);
     }
   }
@@ -698,8 +843,11 @@ function shadow2(w){
   X.fillStyle='rgba(0,0,0,0.25)';X.fill();
 }
 
-function drawCar(cx,cy,def,wa=0,sc=1,sh=true){
-  X.save();X.translate(cx,cy);X.scale(sc,sc);
+function drawCar(cx,cy,def,wa=0,sc=1,sh=true,carObj=null){
+  const bY=carObj?carObj.bounce:0;
+  const sX=carObj?carObj.sx:1;
+  const sY=carObj?carObj.sy:1;
+  X.save();X.translate(cx,cy+bY);X.scale(sc*sX,sc*sY);
   const t=def.type||'hatch';
   const g=def.glass||'rgba(130,210,255,0.55)';
 
@@ -887,16 +1035,34 @@ function drawTrack(){
 }
 
 function drawProgressBar(){
-  const bx=24,by=252,bw=GW-48,bh=12;
-  rr(bx,by,bw,bh,6,'rgba(0,0,0,0.5)');
+  const bx=24,by=252,bw=GW-48,bh=10;
+  // Track bg with subtle inner glow
+  rr(bx,by,bw,bh,5,'rgba(0,0,0,0.55)');
+  // Player progress fill
+  const pct=Math.min(cars[0].x/TRACK,1);
+  if(pct>0){
+    const pfg=X.createLinearGradient(bx,by,bx+bw*pct,by);
+    pfg.addColorStop(0,P.accent+'bb');pfg.addColorStop(1,P.accentC+'bb');
+    rr(bx,by,Math.max(8,bw*pct),bh,5,pfg);
+  }
+  // Car dots
   const carC=['#FF6B6B','#4ECDC4','#F7DC6F'];
   for(let i=0;i<3;i++){
-    const cx=bx+(cars[i].x/TRACK)*bw;
-    X.save();X.shadowColor=carC[i];X.shadowBlur=6;
-    X.beginPath();X.arc(cx,by+6,5.5,0,Math.PI*2);X.fillStyle=carC[i];X.fill();X.restore();
+    const cx=bx+Math.min(cars[i].x/TRACK,1)*bw;
+    X.save();
+    X.shadowColor=carC[i];X.shadowBlur=i===0?10:5;
+    X.beginPath();X.arc(cx,by+5,i===0?7:5,0,Math.PI*2);
+    X.fillStyle=carC[i];X.fill();
+    if(i===0){// Player dot inner ring
+      X.beginPath();X.arc(cx,by+5,4,0,Math.PI*2);
+      X.fillStyle='#fff';X.fill();
+    }
+    X.restore();
   }
-  X.beginPath();X.arc(bx+((TRACK-60)/TRACK)*bw,by+6,3,0,Math.PI*2);X.fillStyle='#fff';X.fill();
-  txt('Start',bx,by-8,10,P.textMuted,'left');txt('Finish',bx+bw,by-8,10,P.textMuted,'right');
+  // Finish flag
+  const fc=bx+((TRACK-60)/TRACK)*bw;
+  X.font='11px sans-serif';X.textAlign='center';X.textBaseline='middle';
+  X.fillText('🏁',fc,by+5);
 }
 
 /* ── BUTTONS ── */
@@ -981,8 +1147,16 @@ function drawHome(){
   X.beginPath();X.moveTo(0,442);X.lineTo(GW,442);X.stroke();
   X.beginPath();X.moveTo(0,528);X.lineTo(GW,528);X.stroke();
   for(let i=0;i<3;i++){
-    const cx=65+i*130+Math.sin(homeT*.8+i*1.4)*7,cy=484+Math.sin(homeT*1.2+i)*4;
-    drawCar(cx,cy,CAR_DEFS[i],homeT*(i+1)*.5,.9,false);
+    const cx=65+i*130+Math.sin(homeT*.7+i*1.3)*9;
+    const cy=484+Math.sin(homeT*(0.9+i*0.15)+i)*5;
+    const sc=i===0?1.0:0.88; // middle car slightly bigger
+    // Wheel spin based on animation time
+    const wa=homeT*(0.8+i*0.3);
+    drawCar(cx,cy,CAR_DEFS[i],wa,sc,false);
+    // Shadow under each car
+    X.save();X.globalAlpha=0.18;
+    X.beginPath();X.ellipse(cx,cy+22,34*sc,7*sc,0,0,Math.PI*2);
+    X.fillStyle='#000';X.fill();X.restore();
   }
   X.save();X.translate(GW/2,170);const ls=1+Math.sin(homeT*1.8)*.012;X.scale(ls,ls);
   X.save();X.shadowColor='#6C63FF';X.shadowBlur=40;
@@ -1034,7 +1208,7 @@ function drawDifficulty(){
   shadow('Difficulty',GW/2,112,34,'#fff');
   txt('Pick your challenge',GW/2,150,15,P.textSecondary,'center',600);
   const diffs=[
-    {key:'easy',  label:'Easy',   sub:'Addition & Subtraction', col:'#43E97B',icon:'🌟'},
+    {key:'easy',  label:'Easy',   sub:'Simple + and − for kids', col:'#43E97B',icon:'🌟'},
     {key:'medium',label:'Medium', sub:'Larger numbers + ×',     col:'#F7971E',icon:'⚡'},
     {key:'hard',  label:'Hard',   sub:'Division + Mixed',       col:'#FF6584',icon:'🔥'},
   ];
@@ -1048,7 +1222,7 @@ function drawDifficulty(){
     txt(d.sub,  cx+88,cy+ch/2+14,14,sel?d.col+'bb':P.textSecondary,'left',600);
     if(sel){X.beginPath();X.arc(cx+cw-28,cy+ch/2,12,0,Math.PI*2);X.fillStyle=d.col;X.fill();
       txt('✓',cx+cw-28,cy+ch/2,12,'#fff','center',900);}
-    addBtn(d.key,cx,cy,cw,ch,()=>difficulty=d.key);
+    addBtn(d.key,cx,cy,cw,ch,()=>{difficulty=d.key;save();});
   });
   X.save();X.shadowColor=P.accent+'88';X.shadowBlur=24;
   bigBtn(40,GH-120,GW-80,66,'Start Race →',P.accent,'#fff',28);X.restore();
@@ -1066,11 +1240,28 @@ function drawRace(){
       X.beginPath();X.arc(sx-38-j*8,sy+Math.sin(Date.now()*.01+j)*4,(4-j*1.2)*c.vx*.05,0,Math.PI*2);
       X.fillStyle=`rgba(180,140,255,${.18-j*.05})`;X.fill();}}
   }
+  // Speed lines (isLine particles)
+  for(const p of particles){
+    if(!p.isLine)continue;
+    X.save();X.globalAlpha=p.life*0.8;
+    X.strokeStyle=p.color;X.lineWidth=p.r*2;
+    X.beginPath();X.moveTo(p.x,p.y);X.lineTo(p.x+p.len,p.y);X.stroke();
+    X.restore();
+  }
+
   for(let ci=2;ci>=0;ci--){
     const c=cars[ci],sx=toSX(c.x),sy=LANES_Y[ci];
-    drawCar(sx,sy,c.def,c.wheel,1,true);
-    rr(sx-22,sy-50,44,18,9,'rgba(0,0,0,0.55)');
-    txt(c.name,sx,sy-41,10,'#fff','center',700);
+    // Motion blur shadow at high speed
+    if(c.vx>20){
+      X.save();X.globalAlpha=Math.min((c.vx-20)/60,0.25);
+      drawCar(sx-c.vx*0.35,sy,c.def,c.wheel,1,false);
+      X.restore();
+    }
+    drawCar(sx,sy,c.def,c.wheel,1,true,c);
+    // Name tag
+    X.save();X.shadowColor='rgba(0,0,0,0.5)';X.shadowBlur=4;
+    rr(sx-22,sy-52,44,18,9,'rgba(0,0,0,0.6)');X.restore();
+    txt(c.name,sx,sy-43,10,c.player?'#fff':'rgba(255,255,255,0.7)','center',c.player?800:700);
   }
   drawProgressBar();
   const place=getPlace(cars[0]);
@@ -1085,9 +1276,14 @@ function drawRace(){
   txt('⏸',GW/2,27,16,'rgba(255,255,255,0.85)','center',900);
   addBtn('pause',GW/2-20,12,40,30,()=>{gamePaused=true;});
   if(question&&!answered){
-    X.save();X.shadowColor='rgba(108,99,255,0.25)';X.shadowBlur=20;
-    rr(16,42,GW-32,74,20,P.panel,P.panelBorder);X.restore();
+    const qAge=Date.now()-qAppearT;
+    const qScale=qAge<200?0.92+0.08*(qAge/200):1;
+    X.save();
+    X.translate(GW/2,79);X.scale(qScale,qScale);X.translate(-GW/2,-79);
+    X.save();X.shadowColor='rgba(108,99,255,0.35)';X.shadowBlur=22;
+    rr(16,42,GW-32,74,20,P.panel,P.panelBorder,1.5);X.restore();
     txt(question.text,GW/2,79,30,P.white,'center',900);
+    X.restore();
     for(let i=0;i<totalQ;i++){
       const dotQ=Math.min(qIdx,totalQ);
       X.beginPath();X.arc(GW/2-((totalQ-1)*9)+i*18,42-14,4.5,0,Math.PI*2);
@@ -1105,7 +1301,13 @@ function drawRace(){
     }
   }
   if(flashT>0){const a=(flashT/350)*.11;X.fillStyle=flashGood?`rgba(67,233,123,${a})`:`rgba(255,71,87,${a})`;X.fillRect(0,0,GW,GH);}
-  for(const p of particles){X.globalAlpha=p.life;X.beginPath();X.arc(p.x,p.y,p.r*p.life,0,Math.PI*2);X.fillStyle=p.color;X.fill();}X.globalAlpha=1;
+  for(const p of particles){
+    if(p.isLine)continue; // already drawn above
+    X.save();X.globalAlpha=p.life;
+    X.shadowColor=p.color;X.shadowBlur=3;
+    X.beginPath();X.arc(p.x,p.y,p.r*p.life,0,Math.PI*2);X.fillStyle=p.color;X.fill();
+    X.restore();
+  }X.globalAlpha=1;
   X.font='700 20px Nunito,sans-serif';X.textAlign='center';X.textBaseline='middle';
   for(const c of cfx){X.globalAlpha=c.life;X.fillStyle=P.gold;X.fillText(c.txt,c.x,c.y);}X.globalAlpha=1;
 
@@ -1170,14 +1372,22 @@ function drawResult(){
   if(won){
     if(confetti.length===0&&resultT<0.1) spawnConfetti();
     for(const cf of confetti){
-      cf.x+=cf.vx; cf.y+=cf.vy; cf.r+=cf.vr; cf.vy+=0.06;
-      if(cf.y>GH+20){cf.y=-20;cf.x=rn(0,GW);}
+      cf.x+=cf.vx; cf.y+=cf.vy; cf.r+=cf.vr; cf.vy+=0.08;
+      if(cf.y>GH+20){cf.y=-20;cf.x=rn(0,GW);cf.vy=rn(1,4);}
       X.save();X.translate(cf.x,cf.y);X.rotate(cf.r*Math.PI/180);
-      X.globalAlpha=Math.min(cf.life,.9);
-      X.fillStyle=cf.color;X.fillRect(-cf.w/2,-cf.h/2,cf.w,cf.h);
+      X.globalAlpha=Math.min(cf.life,.95);
+      X.fillStyle=cf.color;
+      // Mix shapes: rect and circle
+      if(cf.w>9){X.beginPath();X.arc(0,0,cf.w/2,0,Math.PI*2);X.fill();}
+      else X.fillRect(-cf.w/2,-cf.h/2,cf.w,cf.h);
       X.restore();
     }
     X.globalAlpha=1;
+    // Radial glow behind trophy
+    const grd=X.createRadialGradient(GW/2,185,0,GW/2,185,90);
+    grd.addColorStop(0,'rgba(255,208,77,0.18)');
+    grd.addColorStop(1,'rgba(255,208,77,0)');
+    X.fillStyle=grd;X.fillRect(GW/2-90,95,180,180);
   }
 
   // ── Trophy / medal
@@ -1260,8 +1470,20 @@ function drawResult(){
     txt(`${ap.car.name}  •  ${ap.car.def.name}`,GW/2,ry+30,11,P.textMuted,'center',600);
   });
 
+  // ── Lifetime stats strip
+  const statsY=570;
+  X.save();X.shadowColor='rgba(255,255,255,0.05)';X.shadowBlur=6;
+  rr(36,statsY,GW-72,44,14,'rgba(255,255,255,0.04)','rgba(255,255,255,0.08)',1);X.restore();
+  const col3=(GW-72)/3;
+  [{label:'Races',val:totalRaces},{label:'Wins',val:totalWins},{label:'Best',val:bestScore+'✓'}]
+    .forEach((s,i)=>{
+      const sx=36+col3*i+col3/2;
+      txt(String(s.val),sx,statsY+16,15,P.white,'center',900);
+      txt(s.label,sx,statsY+32,10,P.textMuted,'center',600);
+    });
+
   // ── Buttons
-  const btnY=GH-158;
+  const btnY=GH-106;
   X.save();X.shadowColor=P.accent+'66';X.shadowBlur=18;
   bigBtn(36,btnY,GW-72,60,'▶  Race Again',P.accent,'#fff',24);X.restore();
   addBtn('again',36,btnY,GW-72,60,()=>{
@@ -1470,6 +1692,16 @@ function drawSettings(){
   X.save();X.shadowColor='rgba(255,208,96,0.22)';X.shadowBlur=14;
   rr(28,592,GW-56,56,20,'rgba(255,208,96,0.07)','rgba(255,208,96,0.22)',1.5);X.restore();
   txt(`🪙 Total Coins: ${coins}`,GW/2,620,16,P.gold,'center',800);
+
+  // Stats row
+  rr(28,662,GW-56,50,14,'rgba(255,255,255,0.04)','rgba(255,255,255,0.08)',1);
+  [{label:'Races',val:totalRaces},{label:'Wins',val:totalWins},{label:'Best',val:bestScore+'✓'}]
+    .forEach((s,i)=>{
+      const sw=(GW-56)/3, sx=28+sw*i+sw/2;
+      txt(String(s.val),sx,662+18,15,P.white,'center',900);
+      txt(s.label,sx,662+36,10,P.textMuted,'center',600);
+    });
+
   backBtn(()=>goto('home'));
 }
 
@@ -1485,6 +1717,7 @@ function loop(ts){
   X.save();
   // DPR * RSCALE * SC = full native pixel density
   X.setTransform(DPR*SC*RSCALE,0,0,DPR*SC*RSCALE,OX*DPR*RSCALE,OY*DPR*RSCALE);
+  updateFade();
   switch(screen){
     case 'home':       drawHome();break;
     case 'difficulty': drawDifficulty();break;
@@ -1494,6 +1727,7 @@ function loop(ts){
     case 'daily':      drawDaily();break;
     case 'settings':   drawSettings();break;
   }
+  drawFade();
   X.restore();
   requestAnimationFrame(loop);
 }
